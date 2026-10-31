@@ -1,0 +1,37 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Prolitec ScenXus",
+        "description": "Sign in with your ScenXus account (the same email and password you use at scenxus.com).",
+        "data": {
+          "email": "Email",
+          "password": "Password"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Prolitec ScenXus",
+        "description": "Your ScenXus sign-in failed. Re-enter your password (update the email too if it changed).",
+        "data": {
+          "email": "Email",
+          "password": "Password"
+        }
+      },
+      "device": {
+        "title": "Select device",
+        "data": {
+          "dsn": "Device"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "Invalid email or password.",
+      "cannot_connect": "Failed to connect to ScenXus."
+    },
+    "abort": {
+      "already_configured": "This device is already configured.",
+      "no_devices": "No ScenXus devices were found on this account.",
+      "reauth_successful": "Re-authentication was successful."
+    }
+  }
+}
