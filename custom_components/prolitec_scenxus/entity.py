@@ -20,6 +20,17 @@ class ScenXusEntity(CoordinatorEntity[ScenXusCoordinator]):
         self._attr_unique_id = f"{coordinator.dsn}_{key}"
 
     @property
+    def extra_state_attributes(self) -> dict[str, str]:
+        # Stable keys so dashboards (B-Panels) can find fields without relying
+        # on entity ids or friendly names, which move when renamed.
+        raw = self.coordinator.device_info_raw
+        return {
+            "bp_scenxus_field": self._key,
+            "bp_scenxus_dsn": self.coordinator.dsn,
+            "bp_scenxus_name": raw.get("product_name") or f"ScenXus {self.coordinator.dsn}",
+        }
+
+    @property
     def device_info(self) -> DeviceInfo:
         raw = self.coordinator.device_info_raw
         return DeviceInfo(
