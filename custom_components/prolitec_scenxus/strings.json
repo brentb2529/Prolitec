@@ -3,10 +3,11 @@
     "step": {
       "user": {
         "title": "Prolitec ScenXus",
-        "description": "Sign in with your ScenXus account (the same email and password you use at scenxus.com).",
+        "description": "Sign in with your ScenXus account and enter your device's DSN (shown on the device's page at scenxus.com, and on the unit).",
         "data": {
           "email": "Email",
-          "password": "Password"
+          "password": "Password",
+          "dsn": "Device DSN"
         }
       },
       "reauth_confirm": {
@@ -16,21 +17,15 @@
           "email": "Email",
           "password": "Password"
         }
-      },
-      "device": {
-        "title": "Select device",
-        "data": {
-          "dsn": "Device"
-        }
       }
     },
     "error": {
       "invalid_auth": "Invalid email or password.",
-      "cannot_connect": "Failed to connect to ScenXus."
+      "cannot_connect": "Failed to connect to ScenXus.",
+      "unknown_device": "No device found with that DSN on this account."
     },
     "abort": {
       "already_configured": "This device is already configured.",
-      "no_devices": "No ScenXus devices were found on this account.",
       "reauth_successful": "Re-authentication was successful."
     }
   }

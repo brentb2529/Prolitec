@@ -1,7 +1,8 @@
 # Prolitec ScenXus — Home Assistant integration
 
 Full **control** (not just read-only) of a Prolitec ScenXus HVAC scent diffuser
-from Home Assistant. Sign in with your ScenXus email and password — nothing else.
+from Home Assistant. Sign in with your ScenXus email + password and your device's
+DSN — everything is entered in the UI, no YAML.
 
 ## What you get
 
@@ -12,34 +13,36 @@ from Home Assistant. Sign in with your ScenXus email and password — nothing el
 - **Fan Speed** (number slider, 0–5; 0 = Off)
 
 **Sensors**
-- Fragrance Remaining (%), Cartridge Life (%), Pump Life (%), Appliance Life (%)
+- Fragrance Remaining (%), Cartridge Life, Pump Life, Appliance Life
 - Core Temperature, Error Code, Schedule Running, Host MCU Version (diagnostic)
 - Online (connectivity binary sensor)
 
 ## How it works
 
-The device is an Ayla-based IoT scent unit. True on-LAN control (Ayla "LAN mode")
-is disabled on the hardware (`lan_enabled = false`) and can only be turned on by
-Prolitec, so this integration controls the unit through the ScenXus cloud — the
-same path the web app uses:
+The device runs on the ScenXus cloud (an Ayla IoT platform). The integration:
 
-1. `POST https://scenxus.com/api/account/login` with your email + password.
-   The ScenXus backend performs the Ayla sign-in server-side and returns a
-   session cookie.
-2. That session cookie authorizes reads and writes through the device-service
-   proxy (`/proxy/deviceServices/apiv1/...`). The integration re-logs in
-   automatically if the session expires.
+1. Signs in at `POST https://scenxus.com/api/account/login` with your email +
+   password to obtain a Bearer token (auto-refreshed before it expires).
+2. Reads and controls the device directly through the ScenXus device-service
+   proxy — `GET /proxy/deviceServices/apiv1/dsns/<DSN>/properties.json` for state
+   and `POST .../properties/<name>/datapoints` for control — using that token.
 
-No app keys, tokens, or developer credentials are required.
+No app keys, Ayla credentials, or developer accounts are needed. True on-LAN
+control (Ayla "LAN mode") is disabled on the hardware (`lan_enabled = false`) and
+can only be enabled by Prolitec, so this uses the cloud path — the same one the
+ScenXus web app uses.
 
-## Installation
+## Installation (HACS)
 
-1. Copy `custom_components/prolitec_scenxus/` into your HA
-   `config/custom_components/` directory (or add this repo as a HACS custom
-   repository), then restart Home Assistant.
-2. **Settings → Devices & Services → Add Integration → "Prolitec ScenXus"**.
-3. Enter your ScenXus **email** and **password**. If your account has more than
-   one device, you'll be asked to pick one.
+1. **HACS → ⋮ → Custom repositories** → add `https://github.com/brentb2529/Prolitec`,
+   type **Integration**.
+2. Find **Prolitec ScenXus** in HACS → **Download** → **Restart Home Assistant**.
+3. **Settings → Devices & Services → Add Integration → "Prolitec ScenXus"**.
+4. Enter your **email**, **password**, and **device DSN** (shown on the device's
+   page at scenxus.com and on the unit — e.g. `AC000W048697889`).
+
+If you later change your ScenXus password, Home Assistant will prompt you to
+re-enter it (a reauth dialog) — still no YAML.
 
 ## Notes
 

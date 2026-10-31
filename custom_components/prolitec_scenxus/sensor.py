@@ -48,14 +48,12 @@ SENSORS: tuple[ScenXusSensorDescription, ...] = (
     ScenXusSensorDescription(
         key=PROP_CARTRIDGE_LIFE,
         name="Cartridge Life",
-        native_unit_of_measurement=PERCENTAGE,
         icon="mdi:cable-data",
         state_class=SensorStateClass.MEASUREMENT,
     ),
     ScenXusSensorDescription(
         key=PROP_PUMP_LIFE,
         name="Pump Life",
-        native_unit_of_measurement=PERCENTAGE,
         icon="mdi:pump",
         state_class=SensorStateClass.MEASUREMENT,
         entity_category=EntityCategory.DIAGNOSTIC,
@@ -63,7 +61,6 @@ SENSORS: tuple[ScenXusSensorDescription, ...] = (
     ScenXusSensorDescription(
         key=PROP_APPLIANCE_LIFE,
         name="Appliance Life",
-        native_unit_of_measurement=PERCENTAGE,
         icon="mdi:air-filter",
         state_class=SensorStateClass.MEASUREMENT,
         entity_category=EntityCategory.DIAGNOSTIC,

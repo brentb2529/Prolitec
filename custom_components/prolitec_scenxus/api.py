@@ -1,14 +1,18 @@
 """Async client for Prolitec ScenXus devices.
 
-Authenticates against the ScenXus web backend with email + password (the
-backend performs the Ayla sign-in server-side) and controls the device through
-its device-service proxy, authorized by the session cookie set at login.
+Authenticates against the ScenXus web backend with email + password to obtain a
+Bearer token, then reads and controls the device directly through the ScenXus
+device-service proxy (`/proxy/deviceServices/apiv1/...`) using that token.
 """
 
 from __future__ import annotations
 
 import asyncio
+import base64
+import binascii
+import json
 import logging
+import time
 from typing import Any
 
 import aiohttp
@@ -16,6 +20,11 @@ import aiohttp
 from .const import BASE_URL, DEVICE_SVC, LOGIN_PATH
 
 _LOGGER = logging.getLogger(__name__)
+
+# Refresh the token this many seconds before its expiry.
+_TOKEN_MARGIN = 60
+# Fallback lifetime if the token has no decodable expiry.
+_DEFAULT_LIFETIME = 240
 
 
 class ScenXusAuthError(Exception):
@@ -27,11 +36,7 @@ class ScenXusApiError(Exception):
 
 
 class ScenXusApi:
-    """Client for a ScenXus account.
-
-    `session` must be a dedicated aiohttp session with its own cookie jar so the
-    login cookies are isolated to this integration.
-    """
+    """Client for a ScenXus account / device."""
 
     def __init__(
         self,
@@ -42,13 +47,14 @@ class ScenXusApi:
         self._session = session
         self._email = email
         self._password = password
-        self._logged_in = False
+        self._token: str | None = None
+        self._token_exp: float = 0.0
         self._auth_lock = asyncio.Lock()
 
     # -- Authentication -------------------------------------------------------
 
     async def async_login(self) -> None:
-        """Log in; stores the session cookies in the session's cookie jar."""
+        """Log in and store the Bearer token."""
         url = f"{BASE_URL}{LOGIN_PATH}"
         payload = {"email": self._email, "password": self._password}
         try:
@@ -58,79 +64,74 @@ class ScenXusApi:
                 data = await _json(resp)
                 if resp.status >= 500:
                     raise ScenXusApiError(f"Login server error {resp.status}")
-                # The endpoint returns 200 with {"success": bool, "errors": [...]}.
-                if isinstance(data, dict) and data.get("success") is False:
-                    errors = data.get("errors") or ["Invalid credentials"]
-                    raise ScenXusAuthError("; ".join(str(e) for e in errors)[:200])
-                if resp.status in (401, 403):
-                    raise ScenXusAuthError("Invalid email or password")
-                if resp.status >= 400:
-                    raise ScenXusApiError(f"Login failed ({resp.status})")
+                if not isinstance(data, dict) or data.get("success") is not True:
+                    errors = (data or {}).get("errors") if isinstance(data, dict) else None
+                    raise ScenXusAuthError(
+                        "; ".join(map(str, errors))[:200]
+                        if errors
+                        else "Invalid email or password"
+                    )
+                token = (data.get("result") or {}).get("token")
+                if not token:
+                    raise ScenXusAuthError("Login succeeded but returned no token")
         except aiohttp.ClientError as err:
             raise ScenXusApiError(f"Login request failed: {err}") from err
-        self._logged_in = True
-        _LOGGER.debug("ScenXus login successful for %s", self._email)
 
-    async def _async_ensure_login(self) -> None:
+        self._token = token
+        self._token_exp = _jwt_exp(token) or (time.time() + _DEFAULT_LIFETIME)
+        _LOGGER.debug("ScenXus login OK for %s (token exp in %.0fs)",
+                      self._email, self._token_exp - time.time())
+
+    async def _async_ensure_token(self) -> None:
         async with self._auth_lock:
-            if not self._logged_in:
+            if self._token is None or time.time() >= self._token_exp - _TOKEN_MARGIN:
                 await self.async_login()
+
+    def _headers(self) -> dict[str, str]:
+        return {
+            "Authorization": f"Bearer {self._token}",
+            "Accept": "application/json",
+        }
 
     # -- Core request helper --------------------------------------------------
 
     async def _request(
         self, method: str, path: str, *, json_body: Any | None = None, _retry: bool = True
     ) -> Any:
-        await self._async_ensure_login()
-        url = f"{BASE_URL}{path}"
+        await self._async_ensure_token()
+        url = f"{BASE_URL}{DEVICE_SVC}{path}"
+        headers = self._headers()
+        if json_body is not None:
+            headers["Content-Type"] = "application/json"
         try:
             async with self._session.request(
-                method,
-                url,
-                json=json_body,
-                headers={"Accept": "application/json"},
+                method, url, json=json_body, headers=headers
             ) as resp:
+                text = await resp.text()
                 if resp.status in (401, 403) and _retry:
-                    # Session expired -> re-login once and retry.
-                    _LOGGER.debug("Session expired (%s); re-logging in", resp.status)
-                    self._logged_in = False
-                    await self._async_ensure_login()
+                    self._token = None
+                    await self._async_ensure_token()
                     return await self._request(
                         method, path, json_body=json_body, _retry=False
                     )
-                if resp.status in (401, 403):
-                    self._logged_in = False
-                    raise ScenXusAuthError("Unauthorized after re-login")
                 if resp.status >= 400:
-                    text = await resp.text()
                     raise ScenXusApiError(f"{method} {path} -> {resp.status}: {text[:200]}")
-                return await _json(resp)
+                return _parse(text)
         except aiohttp.ClientError as err:
             raise ScenXusApiError(f"{method} {path} failed: {err}") from err
 
-    # -- Device / property operations ----------------------------------------
-
-    async def async_get_devices(self) -> list[dict[str, Any]]:
-        """Return the list of device objects on the account."""
-        data = await self._request("GET", f"{DEVICE_SVC}/devices.json")
-        if isinstance(data, dict):
-            data = data.get("devices", [])
-        result = []
-        for item in data or []:
-            if isinstance(item, dict):
-                result.append(item.get("device", item))
-        return result
+    # -- Device operations ----------------------------------------------------
 
     async def async_get_device(self, dsn: str) -> dict[str, Any]:
-        """Return the device object for a DSN."""
-        data = await self._request("GET", f"{DEVICE_SVC}/dsns/{dsn}")
+        """Return the device object (name, model, connection_status, ...)."""
+        data = await self._request("GET", f"/dsns/{dsn}")
         if isinstance(data, dict):
             return data.get("device", data)
         return {}
 
     async def async_get_properties(self, dsn: str) -> dict[str, Any]:
-        """Return a {property_name: value} map for a device."""
-        data = await self._request("GET", f"{DEVICE_SVC}/dsns/{dsn}/properties.json")
+        """Return a {property_name: value} map for the device."""
+        data = await self._request("GET", f"/dsns/{dsn}/properties.json")
         result: dict[str, Any] = {}
         if isinstance(data, list):
             for item in data:
@@ -142,19 +143,35 @@ class ScenXusApi:
 
     async def async_set_property(self, dsn: str, name: str, value: Any) -> None:
         """Write a datapoint to an input property."""
-        path = f"{DEVICE_SVC}/dsns/{dsn}/properties/{name}/datapoints"
+        path = f"/dsns/{dsn}/properties/{name}/datapoints"
         await self._request("POST", path, json_body={"datapoint": {"value": value}})
         _LOGGER.debug("Set %s = %s on %s", name, value, dsn)
 
 
+def _jwt_exp(token: str) -> float:
+    """Return the `exp` claim (unix seconds) from a JWT, or 0 if undecodable."""
+    try:
+        payload_b64 = token.split(".")[1]
+        payload_b64 += "=" * (-len(payload_b64) % 4)
+        payload = json.loads(base64.urlsafe_b64decode(payload_b64))
+        return float(payload.get("exp", 0))
+    except (IndexError, ValueError, binascii.Error, json.JSONDecodeError):
+        return 0.0
+
+
+def _parse(text: str) -> Any:
+    """Parse a JSON response body; non-JSON (e.g. XML datapoint echo) -> None."""
+    text = text.strip()
+    if not text or text[0] not in "[{":
+        return None
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        return None
+
+
 async def _json(resp: aiohttp.ClientResponse) -> Any:
-    """Parse JSON tolerantly (ScenXus/Ayla sometimes omit the JSON content-type)."""
     try:
         return await resp.json(content_type=None)
-    except Exception:  # noqa: BLE001
-        import json
-
-        try:
-            return json.loads(await resp.text())
-        except (json.JSONDecodeError, aiohttp.ClientError):
-            return {}
+    except (aiohttp.ClientError, ValueError):
+        return _parse(await resp.text())
