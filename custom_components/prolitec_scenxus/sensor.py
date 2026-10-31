@@ -18,11 +18,11 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import ScenXusConfigEntry
 from .const import (
+    KEY_FRAGRANCE_PCT,
     PROP_APPLIANCE_LIFE,
     PROP_CARTRIDGE_LIFE,
     PROP_CORE_TEMP,
     PROP_ERROR_CODE,
-    PROP_FRAGRANCE_REMAINING,
     PROP_HOST_MCU_VERSION,
     PROP_PUMP_LIFE,
     PROP_SCHEDULE_RUNNING,
@@ -39,7 +39,7 @@ class ScenXusSensorDescription(SensorEntityDescription):
 
 SENSORS: tuple[ScenXusSensorDescription, ...] = (
     ScenXusSensorDescription(
-        key=PROP_FRAGRANCE_REMAINING,
+        key=KEY_FRAGRANCE_PCT,
         name="Fragrance Remaining",
         native_unit_of_measurement=PERCENTAGE,
         icon="mdi:cup-water",

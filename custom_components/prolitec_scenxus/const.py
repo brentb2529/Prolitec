@@ -18,6 +18,23 @@ CONF_DSN: Final = "dsn"
 BASE_URL: Final = "https://scenxus.com"
 LOGIN_PATH: Final = "/api/account/login"
 DEVICE_SVC: Final = "/proxy/deviceServices/apiv1"
+API_FRAGRANCES: Final = "/api/fragrances"
+
+# --- Fragrance-remaining calculation (mirrors the ScenXus web app) -----------
+# Cartridge capacity (mL) by CartName datum, and the fragrance-record field that
+# holds the consumption rate for that cart configuration.
+CART_CAPACITY: Final = {
+    "AQ290": 500, "AQ380": 500, "AQ580": 500,
+    "AQ880w1250": 1250, "AQ880w2500": 2500,
+    "AQ1280": 1250, "AQ2500": 2500,
+}
+CART_FIELD: Final = {
+    "AQ290": "aQ290", "AQ380": "aQ380", "AQ580": "aQ580",
+    "AQ880w1250": "aQ880w1250", "AQ880w2500": "aQ880w2500",
+    "AQ1280": "aQ1280w1250", "AQ2500": "aQ1280w2500",
+}
+# Synthetic coordinator key for the computed percentage.
+KEY_FRAGRANCE_PCT: Final = "fragrance_remaining_pct"
 
 # --- Polling -----------------------------------------------------------------
 DEFAULT_SCAN_INTERVAL: Final = 30  # seconds

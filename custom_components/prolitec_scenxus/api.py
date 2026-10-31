@@ -17,7 +17,7 @@ from typing import Any
 
 import aiohttp
 
-from .const import BASE_URL, DEVICE_SVC, LOGIN_PATH
+from .const import API_FRAGRANCES, BASE_URL, DEVICE_SVC, LOGIN_PATH
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -146,6 +146,37 @@ class ScenXusApi:
         path = f"/dsns/{dsn}/properties/{name}/datapoints"
         await self._request("POST", path, json_body={"datapoint": {"value": value}})
         _LOGGER.debug("Set %s = %s on %s", name, value, dsn)
+
+    async def async_get_datums(self, dsn: str) -> dict[str, Any]:
+        """Return the device's key/value metadata (CartName, Fragrance, ...)."""
+        data = await self._request("GET", f"/dsns/{dsn}/data.json")
+        result: dict[str, Any] = {}
+        if isinstance(data, list):
+            for item in data:
+                datum = item.get("datum", item) if isinstance(item, dict) else {}
+                key = datum.get("key")
+                if key is not None:
+                    result[key] = datum.get("value")
+        return result
+
+    async def async_get_fragrances(self) -> list[dict[str, Any]]:
+        """Return the fragrance database (consumption rates, densities)."""
+        await self._async_ensure_token()
+        url = f"{BASE_URL}{API_FRAGRANCES}"
+        try:
+            async with self._session.get(url, headers=self._headers()) as resp:
+                if resp.status in (401, 403):
+                    self._token = None
+                    await self._async_ensure_token()
+                    async with self._session.get(url, headers=self._headers()) as r2:
+                        data = await _json(r2)
+                else:
+                    data = await _json(resp)
+        except aiohttp.ClientError as err:
+            raise ScenXusApiError(f"GET fragrances failed: {err}") from err
+        if isinstance(data, dict):
+            data = data.get("result", [])
+        return data if isinstance(data, list) else []
 
 
 def _jwt_exp(token: str) -> float:
